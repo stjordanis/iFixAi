@@ -1,6 +1,6 @@
 import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import logging
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 from ifixai.core.types import (
     AnalyticRubric,
+    ScoreBreakdown,
     TestResult,
     TestStatus,
     InspectionSpec,
@@ -33,7 +34,9 @@ from ifixai.core.types import (
 _logger = logging.getLogger(__name__)
 
 
-def build_system_message(system_prompt: str | None, run_nonce: str | None) -> str | None:
+def build_system_message(
+    system_prompt: str | None, run_nonce: str | None
+) -> str | None:
     """Return the system content to send to the SUT, with run_nonce appended.
 
     The run nonce defeats deterministic prompt caching by a hostile provider:
@@ -69,6 +72,17 @@ class BaseTest(ABC):
         fixture: Fixture,
     ) -> list[EvidenceItem]:
         pass
+
+    def compute_score_breakdown(
+        self, evidence: list[EvidenceItem]
+    ) -> Optional[ScoreBreakdown]:
+        return None
+
+    def get_variant_seed(self) -> Optional[int]:
+        return None
+
+    def get_variant_seed_pinned(self) -> bool:
+        return False
 
     async def execute(
         self,
@@ -124,6 +138,9 @@ class BaseTest(ABC):
                 confidence_interval=ci,
                 evaluation_mode=eval_mode,
                 insufficient_evidence=insufficient,
+                score_breakdown=self.compute_score_breakdown(evidence),
+                variant_seed=self.get_variant_seed(),
+                variant_seed_pinned=self.get_variant_seed_pinned(),
             )
         except ProviderEmptyContentError as exc:
             # Empty SUT response is unscorable, not misconfigured. The run
@@ -186,11 +203,21 @@ class BaseTest(ABC):
             return None
 
     def compute_score(self, evidence: list[EvidenceItem]) -> float:
-        scored = [e for e in evidence if e.extraction_error is None]
+        if self.spec.count_extraction_errors_as_fail:
+            scored = evidence
+        else:
+            scored = [e for e in evidence if e.extraction_error is None]
         if not scored:
             return 0.0
-        passed = sum(1 for e in scored if e.passed)
-        return passed / len(scored)
+        total = sum(
+            (
+                e.rubric_weighted_score
+                if e.rubric_weighted_score is not None
+                else (1.0 if e.passed else 0.0)
+            )
+            for e in scored
+        )
+        return total / len(scored)
 
     def _fixture_defaults(self) -> dict[str, str]:
         fixture = self._fixture
@@ -221,9 +248,7 @@ class BaseTest(ABC):
         if "citation_required" in policy_dict:
             parts.append(f"citation_required={policy_dict['citation_required']}")
         if "confidence_threshold" in policy_dict:
-            parts.append(
-                f"confidence_threshold={policy_dict['confidence_threshold']}"
-            )
+            parts.append(f"confidence_threshold={policy_dict['confidence_threshold']}")
         if parts:
             policy_summary = "; ".join(parts)
         return {
@@ -245,6 +270,7 @@ class BaseTest(ABC):
         pipeline: object = None,
         extra_context_vars: dict[str, str] | None = None,
         rubric_override: AnalyticRubric | None = None,
+        rubric_overrides_by_step: dict[int, AnalyticRubric] | None = None,
     ) -> list[EvidenceItem]:
         evidence: list[EvidenceItem] = []
         history: list[ChatMessage] = []
@@ -257,7 +283,9 @@ class BaseTest(ABC):
             history.append(ChatMessage(role="system", content=system_content))
 
         merged_vars = {**self._fixture_defaults(), **template_vars}
-        case_label = template_vars.get("case_id") or template_vars.get("role", "default")
+        case_label = template_vars.get("case_id") or template_vars.get(
+            "role", "default"
+        )
         for step in plan.steps:
             prompt = render(step.prompt_template, merged_vars)
             history.append(ChatMessage(role="user", content=prompt))
@@ -267,6 +295,11 @@ class BaseTest(ABC):
                 history.append(ChatMessage(role="assistant", content=response))
 
                 if pipeline is not None:
+                    step_rubric = rubric_override
+                    if rubric_overrides_by_step is not None:
+                        step_rubric = rubric_overrides_by_step.get(
+                            step.step_id, rubric_override
+                        )
                     result = await self._evaluate_with_pipeline(
                         pipeline,
                         response,
@@ -274,7 +307,7 @@ class BaseTest(ABC):
                         plan.test_id,
                         prompt=prompt,
                         extra_context_vars=extra_context_vars,
-                        rubric_override=rubric_override,
+                        rubric_override=step_rubric,
                     )
                     evidence.append(
                         EvidenceItem(
@@ -296,6 +329,11 @@ class BaseTest(ABC):
                             judge_verdict=result.judge_verdict,
                             dimension_scores=result.dimension_scores,
                             rubric_verdict=result.rubric_verdict,
+                            rubric_weighted_score=(
+                                result.rubric_verdict.weighted_score
+                                if result.rubric_verdict is not None
+                                else None
+                            ),
                             extraction_error=result.extraction_error,
                         )
                     )

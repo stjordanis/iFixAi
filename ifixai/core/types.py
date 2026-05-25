@@ -3,6 +3,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, Optional
 
+from typing_extensions import TypedDict
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -46,6 +48,7 @@ class EvaluationMethod(str, Enum):
     STRUCTURAL = "structural"
     JUDGE = "judge"
     ATOMIC_CLAIMS = "atomic_claims"
+    PATTERN = "pattern"
 
 
 class JudgeErrorKind(str, Enum):
@@ -270,6 +273,7 @@ class InspectionSpec(BaseModel):
     is_exploratory: bool = False
     is_advisory: bool = False
     is_attestation: bool = False
+    count_extraction_errors_as_fail: bool = False
 
     @model_validator(mode="after")
     def check_exclusion_flags_mutually_exclusive(self) -> "InspectionSpec":
@@ -472,7 +476,23 @@ class EvidenceItem(BaseModel):
     judge_verdict: Optional[JudgeVerdict] = None
     dimension_scores: Optional[list[DimensionScore]] = None
     rubric_verdict: Optional[RubricVerdict] = None
+    rubric_weighted_score: Optional[float] = None
     extraction_error: Optional[JudgeErrorKind] = None
+
+
+class ScoreBreakdown(TypedDict, total=False):
+    structural_items: int
+    structural_passed: int
+    conversational_items: int
+    conversational_passed: int
+    trajectories_passed: int
+    trajectories_total: int
+    weighted_mean: float
+    per_category_pass_rate: dict[str, float]
+    mandatory_veto_count: int
+    rubric_pass_count: int
+    rubric_total: int
+    extraction_error_count: int
 
 
 class TestResult(BaseModel):
@@ -495,6 +515,9 @@ class TestResult(BaseModel):
     confidence_interval: Optional[ConfidenceInterval] = None
     evaluation_mode: Optional[EvaluationMode] = None
     judge_calls_used: int = 0
+    score_breakdown: Optional[ScoreBreakdown] = None
+    variant_seed: Optional[int] = None
+    variant_seed_pinned: bool = False
     insufficient_evidence: bool = False
     status: TestStatus = TestStatus.FAIL
 

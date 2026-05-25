@@ -26,6 +26,9 @@ ADVISORY_INSPECTION_PREFIX: Final[str] = (
 ATTESTATION_INSPECTION_PREFIX: Final[str] = (
     "attestation inspection (deployer-attested, not scored): "
 )
+_PROMPT_DISPLAY_CAP: Final[int] = 2000
+_ACTUAL_DISPLAY_CAP: Final[int] = 2000
+
 B22_SKIPPED_MESSAGE: Final[str] = (
     "b22 skipped: SUT non-deterministic (pass --sut-temperature 0 or --sut-seed)"
 )
@@ -495,9 +498,7 @@ def render_test_table(result: TestRunResult) -> str:
     _UNSCORED_STATUSES = {TestStatus.INCONCLUSIVE, TestStatus.ERROR}
     for br in scored:
         status = _format_test_status(br)
-        score_display = (
-            "n/a" if br.status in _UNSCORED_STATUSES else f"{br.score:.1%}"
-        )
+        score_display = "n/a" if br.status in _UNSCORED_STATUSES else f"{br.score:.1%}"
         if br.confidence_interval and br.status not in _UNSCORED_STATUSES:
             score_display += f" [{br.confidence_interval.lower:.2f}, {br.confidence_interval.upper:.2f}]"
         eval_path = _dominant_evaluation_path(br)
@@ -530,6 +531,32 @@ def render_test_table(result: TestRunResult) -> str:
                     lines.append(
                         f"- Weighted score: {rv.weighted_score:.2f} | Verdict: {rv.verdict}{veto_note}\n"
                     )
+
+    results_with_extras = [
+        br
+        for br in result.test_results
+        if br.score_breakdown is not None or br.variant_seed is not None
+    ]
+    if results_with_extras:
+        lines.append("")
+        lines.append("### Score Breakdown\n")
+        for br in results_with_extras:
+            if br.score_breakdown is not None:
+                bd = br.score_breakdown
+                s_passed = bd.get("structural_passed", 0)
+                s_total = bd.get("structural_items", 0)
+                c_passed = bd.get("conversational_passed", 0)
+                c_total = bd.get("conversational_items", 0)
+                lines.append(
+                    f"**{br.test_id}**: "
+                    f"Structural: {s_passed}/{s_total}   "
+                    f"Conversational: {c_passed}/{c_total}"
+                )
+            if br.variant_seed is not None:
+                pinned_label = "pinned" if br.variant_seed_pinned else "random"
+                lines.append(
+                    f"**{br.test_id}** seed: {br.variant_seed} ({pinned_label})"
+                )
 
     total_judge_calls = sum(br.judge_calls_used for br in result.test_results)
     if total_judge_calls > 0:
@@ -689,13 +716,13 @@ def render_evidence_appendix(result: TestRunResult) -> str:
 
         for ev in br.evidence:
             prompt_display = (
-                ev.prompt_sent[:200] + "..."
-                if len(ev.prompt_sent) > 200
+                ev.prompt_sent[:_PROMPT_DISPLAY_CAP] + "..."
+                if len(ev.prompt_sent) > _PROMPT_DISPLAY_CAP
                 else ev.prompt_sent
             )
             actual_display = ev.actual_response or ev.actual
-            if len(actual_display) > 200:
-                actual_display = actual_display[:200] + "..."
+            if len(actual_display) > _ACTUAL_DISPLAY_CAP:
+                actual_display = actual_display[:_ACTUAL_DISPLAY_CAP] + "..."
             ev_status = "PASS" if ev.passed else "FAIL"
 
             lines.append(
