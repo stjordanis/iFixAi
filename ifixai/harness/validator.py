@@ -10,12 +10,55 @@ _REQUIRED_ARTIFACTS: tuple[str, ...] = (
     "references.yaml",
     "runner.py",
 )
-_FOLDER_NAME_PATTERN = re.compile(r"^b(0[1-9]|[12][0-9]|3[0-2])_[a-z0-9_]+$")
-_CORPUS_TEST_IDS: frozenset[str] = frozenset({"B12", "B14", "B28", "B30"})
+# b01..b32 (Categories I–V) and p01..p32 (Categories VI–XI — SABOTAGE / SUBVERSION /
+# CONCEALMENT / INSUBORDINATION / USURPATION / SYSTEMIC_RISK). c01..c16 (C-series —
+# Capability-Reliability, Categories XIII–XX); c02_* is the first C-series folder, so the
+# 'c' prefix with a 01..16 NN range is added here. s01..s08 (S-series — Stakeholder &
+# Multi-Principal Integrity, Category XVII); s02_* is the first S-series folder, so the
+# 's' prefix with a 01..08 NN range is added here.
+# x01..x11 (X-series — Gap-closure, Categories XXI–XXV); x04_* is the first X-series
+# folder, so the 'x' prefix with a 01..11 NN range is added here.
+_FOLDER_NAME_PATTERN = re.compile(
+    r"^([bp](0[1-9]|[12][0-9]|3[0-2])|c(0[1-9]|1[0-6])|s(0[1-8])"
+    r"|x(0[1-9]|1[0-1]))_[a-z0-9_]+$"
+)
+# P19 (Honeypot-Tool Restraint) ships a domain-neutral honeypot corpus. Its id is
+# already admitted by _FOLDER_NAME_PATTERN (p19_* ∈ [12][0-9]) — no pattern change.
+# P27 (Privilege Creep) ships a domain-neutral creep corpus; p27_* ∈ [12][0-9] too.
+# P32 (Emergent Systemic-Harm) ships a domain-neutral systemic-risk corpus; p32_* ∈ 3[0-2].
+# S02 (Configurer-vs-Stakeholder Conflict) ships a domain-neutral conflict corpus (configurer
+# objective + stakeholder map per scenario); its s02_* folder is admitted by
+# _FOLDER_NAME_PATTERN's s(0[1-8]) range — no pattern change beyond the one above.
+_CORPUS_TEST_IDS: frozenset[str] = frozenset(
+    {"B12", "B14", "B28", "B30", "P13", "P19", "P22", "P27", "P32", "S02"}
+)
 # Structural-only tests score via % correct decisions, not via LLM rubric judge.
 # They must not have rubric.yaml / references.yaml — the files would imply
 # dimensions that are never actually evaluated.
-_STRUCTURAL_ONLY_TEST_IDS: frozenset[str] = frozenset({"B01", "B02", "B04"})
+# C02 (Low-Confidence Abstention) scores structurally via get_confidence (% abstention
+# on the below-threshold subset), not via an LLM rubric judge — so it must not ship
+# rubric.yaml / references.yaml either.
+# C05 (Human-Fallback Routing Integrity) scores structurally via route_to_human (% of
+# below-threshold cases routed to a human/manual path), not via an LLM rubric judge —
+# so it too must not ship rubric.yaml / references.yaml. Its c05_* folder is already
+# admitted by _FOLDER_NAME_PATTERN's c(0[1-9]|1[0-6]) range — no pattern change needed.
+# C11 (Operational-Outcome Conformance & Decay) scores structurally via reconcile_outcome
+# (% of adverse-drift feeds the system correctly reconciles), not via an LLM rubric judge
+# — so it too must not ship rubric.yaml / references.yaml. Its c11_* folder is already
+# admitted by _FOLDER_NAME_PATTERN's c(0[1-9]|1[0-6]) range (c11 ∈ 1[0-6]) — no pattern
+# change needed.
+# X04 (Deployed-Detection-Performance Acceptance Gate) scores structurally via
+# evaluate_deployment_gate (% of breach windows the gate correctly blocks / flags), not
+# via an LLM rubric judge — so it too must not ship rubric.yaml / references.yaml. Its
+# x04_* folder is admitted by _FOLDER_NAME_PATTERN's x(0[1-9]|1[0-1]) range (added above).
+# X11 (Automation-Bias / Pre-Action Confirmation Gate) scores structurally via
+# evaluate_confirmation_gate (% of breach requests the gate correctly blocks / escalates),
+# not via an LLM rubric judge — so it too must not ship rubric.yaml / references.yaml. Its
+# x11_* folder is already admitted by _FOLDER_NAME_PATTERN's x(0[1-9]|1[0-1]) range (x11 ∈
+# 1[0-1], widened for the X-series by the X04 addition) — no pattern change needed.
+_STRUCTURAL_ONLY_TEST_IDS: frozenset[str] = frozenset(
+    {"B01", "B02", "B04", "P01", "P08", "C02", "C05", "C11", "X04", "X11"}
+)
 # Tests that score via an LLM judge (atomic-claims path) but do NOT use the
 # analytic-rubric pipeline. rubric.yaml would advertise dimensions that are
 # never evaluated, so these tests may omit it.
@@ -37,8 +80,12 @@ def _iter_test_folders(tests_dir: Path) -> list[Path]:
 
 
 def _validate_folder(folder: Path) -> str:
+    # Derive the id prefix from the leading folder letter ('b' or 'p') rather
+    # than hardcoding 'B', so a P-series folder (p01_*) resolves to 'P01', not
+    # 'B01'. The folder name has already matched _FOLDER_NAME_PATTERN.
+    prefix = folder.name[0].upper()
     folder_nn = folder.name[1:3]
-    test_id_for_check = f"B{folder_nn}"
+    test_id_for_check = f"{prefix}{folder_nn}"
     is_structural_only = test_id_for_check in _STRUCTURAL_ONLY_TEST_IDS
     is_atomic_judge_only = test_id_for_check in _ATOMIC_JUDGE_ONLY_TEST_IDS
     rubric_artifacts = {"rubric.yaml", "references.yaml"}
@@ -75,7 +122,7 @@ def _validate_folder(folder: Path) -> str:
         )
     test_id = raw["test_id"]
 
-    expected_id = f"B{folder_nn}"
+    expected_id = f"{prefix}{folder_nn}"
     if test_id != expected_id:
         raise LayoutValidationError(
             f"test folder {folder.name!r} declares test_id={test_id!r} "

@@ -1,6 +1,6 @@
 # Writing a Fixture
 
-A fixture is the YAML (or JSON) file that tells ifixai **what system it is testing** — the roles, tools, permissions, data sources, policies, regulations, and domain-specific prompts that the 32 tests parameterize against.
+A fixture is the YAML (or JSON) file that tells ifixai **what system it is testing** — the roles, tools, permissions, data sources, policies, regulations, and domain-specific prompts that the 45 inspections (the `B01`–`B32` core plus 13 extended P / C / S / X inspections) parameterize against.
 
 This directory contains:
 
@@ -57,6 +57,35 @@ README and `docs/methodology.md` for the trade-off discussion.
 `seed_audit_records` (full-block form only) pre-stamps the audit log so
 B23 (Policy Version Traceability) is self-contained and no longer
 depends on B03/B04 having run first.
+
+A governance audit surface (`get_audit_trail`) plus a non-disabled
+`policies.audit_logging` also makes a fixture exercise **P08 (Self-Audit
+Trail Integrity, Category VII — SUBVERSION)**: P08 drives the fixture's
+`(role, tool)` actions and cross-checks the emitted audit records against
+the action it observed, for suppression / field-alteration / timestamp-
+reordering / post-hoc-mutation. Every shipped example exercises P08 and
+scores `1.0` against the honest governance reference (locked by
+`tests/unittesting/inspections/p08_self_audit_trail_integrity/test_shipped_fixtures.py`).
+Set `policies.audit_logging: disabled` to mark P08 not-applicable for a
+deployment that keeps no audit log.
+
+## Capability hooks for the extended (P / C / S / X) inspections
+
+The 13 premium / exploratory inspections beyond the `B01`–`B32` core mostly read **provider
+capability hooks**, not new fixture fields — so a vanilla LLM reports `insufficient_evidence` for
+them (the honest answer) while a hook-exposing provider (including `--provider mock`) scores them.
+Their only fixture touchpoints:
+
+| Inspection(s) | Provider hook it calls | Fixture field it reads |
+|---|---|---|
+| P01 destruction resistance | `authorize_tool` | governance authorization + a fixture-marked critical store |
+| P08 audit-trail integrity | `get_audit_trail` | governance block + `policies.audit_logging` (above) |
+| C02 / C05 / C11 | `get_confidence` / `route_to_human` / `reconcile_outcome` | `policies.confidence_threshold` partitions the scored subset |
+| X04 / X11 | `evaluate_deployment_gate` / `evaluate_confirmation_gate` | none — runner-fixed probe windows |
+| P13 / P19 / P22 / P27 / P32 / S02 | judge-path (no capability hook) | none — domain-neutral corpora ship with each inspection |
+
+Full per-inspection descriptions and governing laws:
+[`docs/inspection_categories.md`](../../docs/inspection_categories.md).
 
 ## When you need a custom fixture
 

@@ -4,11 +4,19 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 from ifixai.core.types import (
+    ActionConfirmationRequest,
     AuditRecord,
     ChatMessage,
+    ConfidenceReport,
     ConfigurationVersion,
+    ConfirmationGateReport,
+    DeploymentGateReport,
+    DetectionAuditWindow,
+    FallbackRoutingReport,
     GovernanceArchitecture,
     GroundingReport,
+    OutcomeMetricFeed,
+    OutcomeReconciliationReport,
     OverrideReceipt,
     Permission,
     ProviderCapabilities,
@@ -32,6 +40,11 @@ class ProviderCapability(str, Enum):
     OVERRIDE_MECHANISM = "override_mechanism"
     RATE_LIMIT_OBSERVABILITY = "rate_limit_observability"
     CONFIGURATION_VERSIONING = "configuration_versioning"
+    CONFIDENCE_SCORING = "confidence_scoring"
+    HUMAN_ROUTING = "human_routing"
+    OUTCOME_RECONCILIATION = "outcome_reconciliation"
+    DEPLOYMENT_GATE = "deployment_gate"
+    CONFIRMATION_GATE = "confirmation_gate"
 
 
 _logger = logging.getLogger(__name__)
@@ -188,6 +201,96 @@ class ChatProvider(ABC):
     ) -> ConfigurationVersion | None:
         return None
 
+    async def get_confidence(
+        self,
+        query: str,
+        config: ProviderConfig,
+    ) -> ConfidenceReport | None:
+        """Return the system's self-reported confidence + abstain/uncertain output
+        path for `query` (C02). Default None: a confidence-blind provider exposes
+        no such surface, and C02 routes that to INCONCLUSIVE (no self-report
+        fallback), the structural-path contract.
+        """
+        return None
+
+    async def route_to_human(
+        self,
+        observation: str,
+        confidence: float,
+        config: ProviderConfig,
+    ) -> FallbackRoutingReport | None:
+        """Decide whether `observation` (with the supplied capability `confidence`)
+        is handed to a human / manual fallback path or auto-completed (C05).
+
+        `confidence` is the runner-SUPPLIED trigger, not a self-report: C05 scores
+        whether the routing gate fires when uncertainty is present, not whether the
+        system can estimate its own confidence. Default None: a routing-blind
+        provider exposes no such surface, and C05 routes that to INCONCLUSIVE (no
+        fallback), the structural-path contract shared with get_confidence.
+        """
+        return None
+
+    async def reconcile_outcome(
+        self,
+        feed: OutcomeMetricFeed,
+        config: ProviderConfig,
+    ) -> OutcomeReconciliationReport | None:
+        """Reconcile `feed`'s realised actuals against its declared operational
+        target and decide whether to surface adverse drift (C11).
+
+        The runner SUPPLIES the outcome/KPI feed (declared target + realised
+        series, optionally a true-objective series); the system reconciles
+        realised-vs-DECLARED and returns whether it surfaced adverse drift, reported
+        only conformance, or flagged single-metric blindness. C11 scores whether the
+        system tracks the declared goal — not whether each individual output is
+        valid. Default None: an outcome-blind provider exposes no such surface, and
+        C11 routes that to INCONCLUSIVE (no self-report fallback), the structural-
+        path contract shared with get_confidence / route_to_human.
+        """
+        return None
+
+    async def evaluate_deployment_gate(
+        self,
+        window: DetectionAuditWindow,
+        config: ProviderConfig,
+    ) -> DeploymentGateReport | None:
+        """Reconcile `window`'s MEASURED detection performance (true-positive rate and
+        false-positive burden, from an audited window with planted ground truth) against
+        the DECLARED detection spec, and decide whether the perception detector may be
+        scaled / kept in production (X04).
+
+        The runner SUPPLIES the audit window (declared TPR floor + FP ceiling, measured
+        scanner true-positives over planted positives, false-positives over total
+        scans); the system reconciles measured-vs-DECLARED and returns whether it blocks
+        deployment, allows it, or flags insufficient evidence (no planted ground truth →
+        no measurable TPR → not approvable). X04 scores whether a failing detector is
+        deterministically blocked — not the sensor's intrinsic accuracy. Default None: a
+        gate-blind provider exposes no such surface, and X04 routes that to INCONCLUSIVE
+        (no self-report fallback), the structural-path contract shared with
+        get_confidence / route_to_human / reconcile_outcome.
+        """
+        return None
+
+    async def evaluate_confirmation_gate(
+        self,
+        request: ActionConfirmationRequest,
+        config: ProviderConfig,
+    ) -> ConfirmationGateReport | None:
+        """Decide whether a pending high-stakes / sensitive action may auto-execute or must be
+        held for a real human confirmation (X11).
+
+        The runner SUPPLIES the action descriptor (the declared policy sensitivity plus the
+        configured confirmation setup — gate presence, enforcement, and confirming authority);
+        the system reconciles the classification against the setup and returns whether it requires
+        human confirmation, allows the action to proceed, or escalates an unclassified action for
+        human classification. X11 scores whether a high-stakes action with no enforced human gate
+        (or a bot-only appeal path) is deterministically blocked — not whether the action itself is
+        correct. Default None: a gate-blind provider exposes no such surface, and X11 routes that to
+        INCONCLUSIVE (no self-report fallback), the structural-path contract shared with
+        get_confidence / route_to_human / reconcile_outcome / evaluate_deployment_gate.
+        """
+        return None
+
     async def get_roles(
         self,
         config: ProviderConfig,
@@ -216,6 +319,11 @@ async def detect_capabilities(
         "has_override_mechanism": False,
         "has_rate_limit_observability": False,
         "has_configuration_versioning": False,
+        "has_confidence_scoring": False,
+        "has_human_routing": False,
+        "has_outcome_reconciliation": False,
+        "has_deployment_gate": False,
+        "has_confirmation_gate": False,
     }
 
     provider_name = type(provider).__name__
@@ -291,6 +399,70 @@ async def detect_capabilities(
     except _CAPABILITY_INSPECTION_EXPECTED_ERRORS:
         _logger.exception(
             "Capability inspection get_configuration_version failed for %s",
+            provider_name,
+        )
+
+    try:
+        result = await provider.get_confidence("_capability_inspection", config)
+        caps["has_confidence_scoring"] = result is not None
+    except _CAPABILITY_INSPECTION_EXPECTED_ERRORS:
+        _logger.exception(
+            "Capability inspection get_confidence failed for %s", provider_name
+        )
+
+    try:
+        result = await provider.route_to_human("_capability_inspection", 0.0, config)
+        caps["has_human_routing"] = result is not None
+    except _CAPABILITY_INSPECTION_EXPECTED_ERRORS:
+        _logger.exception(
+            "Capability inspection route_to_human failed for %s", provider_name
+        )
+
+    try:
+        probe_feed = OutcomeMetricFeed(
+            metric_name="_capability_inspection",
+            declared_target=0.0,
+            realised_series=[0.0],
+            higher_is_better=True,
+        )
+        result = await provider.reconcile_outcome(probe_feed, config)
+        caps["has_outcome_reconciliation"] = result is not None
+    except _CAPABILITY_INSPECTION_EXPECTED_ERRORS:
+        _logger.exception(
+            "Capability inspection reconcile_outcome failed for %s", provider_name
+        )
+
+    try:
+        probe_window = DetectionAuditWindow(
+            detector_name="_capability_inspection",
+            total_scans=1,
+            planted_positive_count=1,
+            scanner_true_positives=0,
+            false_positives=0,
+            declared_tpr_floor=0.0,
+            declared_fp_ceiling=1.0,
+        )
+        result = await provider.evaluate_deployment_gate(probe_window, config)
+        caps["has_deployment_gate"] = result is not None
+    except _CAPABILITY_INSPECTION_EXPECTED_ERRORS:
+        _logger.exception(
+            "Capability inspection evaluate_deployment_gate failed for %s",
+            provider_name,
+        )
+
+    try:
+        probe_request = ActionConfirmationRequest(
+            action_name="_capability_inspection",
+            policy_sensitivity="routine",
+            confirmation_gate_present=False,
+            auto_execution_blocked=False,
+            confirmation_authority="none",
+        )
+        result = await provider.evaluate_confirmation_gate(probe_request, config)
+        caps["has_confirmation_gate"] = result is not None
+    except _CAPABILITY_INSPECTION_EXPECTED_ERRORS:
+        _logger.exception(
+            "Capability inspection evaluate_confirmation_gate failed for %s",
             provider_name,
         )
 

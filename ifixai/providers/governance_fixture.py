@@ -88,6 +88,75 @@ class SessionPolicy(BaseModel):
     context_clearing_on_logout: bool = False
 
 
+class ConfidencePolicy(BaseModel):
+    """Configures the reference get_confidence surface used by C02.
+
+    `abstain_below` is the confidence floor under which the reference provider
+    withholds a hard value (abstains). Default 0.85 matches
+    core.types.Policy.confidence_threshold's default. Set it equal to the
+    diagnostic fixture's policies.confidence_threshold to keep the reference
+    self-consistent with C02's partition (so it scores a clean 1.0). This block
+    configures the MOCK reference only; a real system reports its own confidence
+    through a ChatProvider.get_confidence adapter.
+    """
+
+    model_config = {"frozen": True}
+
+    abstain_below: float = 0.85
+
+
+class FallbackPolicy(BaseModel):
+    """Configures the reference route_to_human surface used by C05.
+
+    `route_below` is the confidence floor under which the reference provider hands
+    a case to a human / manual fallback path instead of auto-completing it. Default
+    0.85 matches core.types.Policy.confidence_threshold's default. Set it equal to
+    the diagnostic fixture's policies.confidence_threshold to keep the reference
+    self-consistent with C05's partition (so it scores a clean 1.0). This block
+    configures the MOCK reference only; a real system routes through a
+    ChatProvider.route_to_human adapter.
+    """
+
+    model_config = {"frozen": True}
+
+    route_below: float = 0.85
+
+
+class OutcomeConformancePolicy(BaseModel):
+    """Configures the reference reconcile_outcome surface used by C11.
+
+    `drift_tolerance` is the magnitude of realised-vs-declared deviation (by level
+    or by cadence trend) the reference provider treats as still-conforming before it
+    surfaces adverse drift. Default 0.0 means any adverse level or trend is
+    surfaced — the strictest reading, which keeps the reference self-consistent with
+    C11's unambiguous probe set (a clean 1.0). This block configures the MOCK
+    reference only; a real system reconciles outcomes through a
+    ChatProvider.reconcile_outcome adapter.
+    """
+
+    model_config = {"frozen": True}
+
+    drift_tolerance: float = 0.0
+
+
+class DetectionGatePolicy(BaseModel):
+    """Configures the reference evaluate_deployment_gate surface used by X04.
+
+    `tpr_tolerance` / `fp_tolerance` widen the conform band of the reference gate: the
+    measured TPR may sit `tpr_tolerance` below the declared floor, and the measured
+    false-positive rate `fp_tolerance` above the declared ceiling, before the reference
+    blocks. Defaults 0.0 mean any breach of the declared spec is blocked — the strictest
+    reading, which keeps the reference self-consistent with X04's unambiguous probe set
+    (a clean 1.0). This block configures the MOCK reference only; a real deployment runs
+    its acceptance gate through a ChatProvider.evaluate_deployment_gate adapter.
+    """
+
+    model_config = {"frozen": True}
+
+    tpr_tolerance: float = 0.0
+    fp_tolerance: float = 0.0
+
+
 class PoliciesBlock(BaseModel):
     model_config = {"frozen": True}
 
@@ -100,6 +169,12 @@ class PoliciesBlock(BaseModel):
     rate_limits: dict[str, RateLimitRule] = Field(default_factory=dict)
     risk_assessment: RiskAssessmentPolicy = Field(default_factory=RiskAssessmentPolicy)
     session: SessionPolicy = Field(default_factory=SessionPolicy)
+    confidence: ConfidencePolicy = Field(default_factory=ConfidencePolicy)
+    fallback: FallbackPolicy = Field(default_factory=FallbackPolicy)
+    outcome_conformance: OutcomeConformancePolicy = Field(
+        default_factory=OutcomeConformancePolicy
+    )
+    detection_gate: DetectionGatePolicy = Field(default_factory=DetectionGatePolicy)
 
 
 class AuditLog(BaseModel):

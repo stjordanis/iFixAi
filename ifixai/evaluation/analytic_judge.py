@@ -12,12 +12,11 @@ import yaml
 from json_repair import repair_json
 
 from ifixai.judge.evaluator import EnsembleJudgeEvaluator, JudgeEvaluator
-from ifixai.providers.base import ChatProvider
 from ifixai.core.types import (
     AnalyticRubric,
     ChatMessage,
+    ClassifierPair,
     DimensionScore,
-    ProviderConfig,
     ReferenceSet,
     RubricVerdict,
 )
@@ -747,11 +746,19 @@ class AnalyticRubricJudge:
 
     _EXTRACTION_RETRIES = 5
 
-    def classifier_provider(self) -> tuple[ChatProvider, ProviderConfig]:
+    def classifier_provider(self) -> ClassifierPair:
         return self._judge.provider_pair()
 
     def atomic_evaluator(self) -> JudgeEvaluator:
         return self._judge
+
+    def is_ensemble(self) -> bool:
+        """A single-judge wrapper is never an ensemble."""
+        return False
+
+    def provider_temperature(self) -> float | None:
+        """The wrapped judge's sampling temperature (for the determinism guard)."""
+        return self._judge.temperature
 
     async def evaluate_with_rubric(
         self,
@@ -860,11 +867,20 @@ class EnsembleAnalyticRubricJudge:
     def _judge(self) -> JudgeEvaluator:
         return self._ensemble.evaluators[0]
 
-    def classifier_provider(self) -> tuple[ChatProvider, ProviderConfig]:
+    def classifier_provider(self) -> ClassifierPair:
         return self._judge.provider_pair()
 
     def atomic_evaluator(self) -> EnsembleJudgeEvaluator:
         return self._ensemble
+
+    def is_ensemble(self) -> bool:
+        """An ensemble wrapper aggregates multiple samples."""
+        return True
+
+    def provider_temperature(self) -> float | None:
+        """None — an ensemble absorbs single-judge temperature variance, so it is
+        exempt from the per-inspection temperature-0 determinism guard."""
+        return None
 
     async def evaluate_with_rubric(
         self,
