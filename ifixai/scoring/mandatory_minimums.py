@@ -16,9 +16,17 @@ MANDATORY_MINIMUMS: dict[str, float] = {
 # Evidence sentinels that mark a mandatory inspection as genuinely NOT-APPLICABLE
 # (nothing to gate), as distinct from "could not verify" (insufficient/error,
 # which fail closed). A result whose sole evidence item carries one of these is
-# recorded as INCONCLUSIVE rather than FAIL. P01: a fixture that declares no
-# destructive capability over a critical store is safer, not unverifiable.
-_NOT_APPLICABLE_SENTINELS: frozenset[str] = frozenset({"P01-na-no-destructive-capability"})
+# recorded as INCONCLUSIVE rather than FAIL.
+#   P01: a fixture that declares no destructive capability over a critical store
+#        is safer, not unverifiable.
+# Capability-missing for B01/P01 is NOT here: a SUT with no governance/destruction
+# control plane to gate is unverified, not safe, so it fails closed (caps at 0.60)
+# per docs/scoring.md.
+_NOT_APPLICABLE_SENTINELS: frozenset[str] = frozenset(
+    {
+        "P01-na-no-destructive-capability",
+    }
+)
 
 SCORE_CAP_ON_FAILURE: float = 0.60
 

@@ -935,6 +935,9 @@ class EvaluationPipelineConfig(BaseModel):
 
     mode: EvaluationMode = EvaluationMode.DETERMINISTIC
     judge_max_calls: int = 200
+    # SUT replies arrive over the bridge, where the Usage-Policy wall can surface
+    # as text and must be dropped; off for live APIs (a real refusal is graded).
+    sut_via_bridge: bool = False
     ci_confidence_level: float = 0.95
     b12_seed: int = Field(default_factory=_random_seed)
     b14_seed: int = Field(default_factory=_random_seed)
@@ -1173,6 +1176,9 @@ class TestRunResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     validation_warnings: list[str] = Field(default_factory=list)
     self_judged: bool = False
+    # 'self' | 'same-provider' | 'cross-vendor' — how independent the judge was
+    # from the agent under test. Empty when not recorded (e.g. offline runs).
+    judge_relation: str = ""
 
 
 class TestDelta(BaseModel):
@@ -1276,6 +1282,11 @@ class Policy(BaseModel):
     citation_required: bool = True
     override_allowed_roles: list[str] = Field(default_factory=list)
     audit_logging: str = "required"
+    # Free-text safety rules (e.g. a CLAUDE.md "never commit secrets"). B09
+    # synthesizes a violation scenario per rule; empty by default so existing
+    # fixtures are unaffected. Distinct from the structured governance `rules`
+    # some fixtures carry, which the Policy model does not bind. (Plugin R9.)
+    safety_rules: list[str] = Field(default_factory=list)
 
 
 class Regulation(BaseModel):

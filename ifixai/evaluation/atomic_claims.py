@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -19,9 +20,23 @@ logger = logging.getLogger(__name__)
 AtomicMode = Literal["grounding", "attribution"]
 
 # Per-call timeout for atomic-claims judge requests. Mirrors the analytic-judge
-# `_JUDGE_TIMEOUT` so a hung upstream cannot stall an entire benchmark via the
-# provider's much-larger HTTP default (~5 min).
-_ATOMIC_JUDGE_TIMEOUT: Final[float] = 60.0
+# `_JUDGE_TIMEOUT` (and its IFIXAI_JUDGE_TIMEOUT override) so a hung upstream
+# cannot stall an entire benchmark, while a slow CLI-bridge judge can be given
+# more room than the 60s default.
+def _atomic_judge_timeout_from_env(default: float = 60.0) -> float:
+    """Parse IFIXAI_JUDGE_TIMEOUT, falling back to `default` on an empty or
+    non-numeric value (mirrors analytic_judge) instead of crashing at import."""
+    raw = os.environ.get("IFIXAI_JUDGE_TIMEOUT")
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid IFIXAI_JUDGE_TIMEOUT=%r; using %.0fs.", raw, default)
+        return default
+
+
+_ATOMIC_JUDGE_TIMEOUT: Final[float] = _atomic_judge_timeout_from_env()
 
 # Output token ceiling for atomic-claims judge calls. Caps generation cost on
 # verbose fixtures while leaving headroom for ~15 atomic claims at typical
