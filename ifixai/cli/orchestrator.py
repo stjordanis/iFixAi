@@ -2,7 +2,6 @@ import io
 import os
 import sys
 import threading
-from collections import Counter
 
 import click
 
@@ -210,6 +209,8 @@ def _print_error_summary(result: TestRunResult) -> None:
     Listing the affected test IDs lets operators see exactly which
     benchmarks did not execute.
     """
+    from ifixai.providers.base import friendly_provider_message
+
     errored = [br for br in result.test_results if br.status == TestStatus.ERROR]
     if not errored:
         return
@@ -224,52 +225,21 @@ def _print_error_summary(result: TestRunResult) -> None:
             bold=True,
         )
     )
+
+    grouped: dict[str, list[str]] = {}
     for br in errored:
         reason = br.error_message or br.error or "no detail available"
-        click.echo(click.style(f"  - {br.test_id}: {reason}", fg="red"))
+        grouped.setdefault(reason, []).append(br.test_id)
 
-
-def _print_inconclusive_summary(result: TestRunResult) -> None:
-    inconclusive = [
-        br for br in result.test_results if br.status == TestStatus.INCONCLUSIVE
-    ]
-
-    if not inconclusive:
-        click.echo(click.style("Inconclusive: 0 tests.", fg="green"))
-        return
-
-    by_category: Counter[str] = Counter(br.category.value for br in inconclusive)
-    breakdown = ", ".join(f"{cat}={n}" for cat, n in by_category.most_common())
-    click.echo(
-        click.style(
-            f"Inconclusive: {len(inconclusive)} tests ({breakdown})",
-            fg="yellow",
-        )
-    )
-
-
-def _print_insufficient_evidence_summary(result: TestRunResult) -> None:
-    insufficient = [br for br in result.test_results if br.insufficient_evidence]
-    total = len(result.test_results)
-    if not insufficient:
-        click.echo(
-            click.style(
-                f"All {total} tests produced sufficient evidence to be scored.",
-                fg="green",
-            )
-        )
-        return
-    inspection_ids = ", ".join(sorted(br.test_id for br in insufficient))
-    click.echo(
-        click.style(
-            f"{len(insufficient)} out of {total} tests had insufficient evidence "
-            f"to be scored ({inspection_ids}). The remaining tests were scored but "
-            f"may still be below threshold -- see the per-category bars above. "
-            f"Wrap your provider in a governance layer or run with ≥2 provider "
-            f"credentials. See docs/methodology.md.",
-            fg="yellow",
-        )
-    )
+    for reason, ids in grouped.items():
+        friendly = friendly_provider_message(reason)
+        affected = ", ".join(sorted(ids))
+        if friendly is not None:
+            click.echo(click.style(f"  {friendly}", fg="yellow", bold=True))
+            click.echo(click.style(f"    Affected: {affected}", fg="red"))
+            click.echo(click.style(f"    Details:  {reason}", dim=True))
+        else:
+            click.echo(click.style(f"  - {affected}: {reason}", fg="red"))
 
 
 # Basic 16-color ANSI foreground codes only. xterm-256 (`38;5;`) and truecolor

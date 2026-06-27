@@ -9,10 +9,9 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> •
-  <a href="#two-ways-to-run-it">Two ways to run</a> •
+  <a href="#three-ways-to-run">Three ways to run</a> •
   <a href="#test-your-own-agent">Test your agent</a> •
   <a href="#what-you-get-back">Scoring</a> •
-  <a href="#in-the-wild">In the wild</a> •
   <a href="docs/">Docs</a> •
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -30,9 +29,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/ifixai-demo.gif" alt="iFixAi demo" width="720" />
+  <img src="docs/assets/scorecard-screenshot.png" alt="iFixAi CLI scorecard" width="900" />
   <br/>
-  <em>Recorded from a custom client build. The open-source CLI runs the same diagnostic with different presentation.</em>
+  <em>The scorecard from one <code>ifixai run</code>: an A–F grade, the five scored core pillars, and a free preview of the premium tier.</em>
 </p>
 
 ---
@@ -63,32 +62,61 @@ is judged by independent providers rather than by itself, one in Standard mode a
 of two or more in Full mode. Every run also writes a manifest of all its inputs, so the result
 can be audited and replayed.
 
-## Two ways to run it
+## Three ways to run
 
-There are two ways to run iFixAi, and both run the same diagnostic underneath: the
-command-line tool (the CLI) or the Claude Code plugin. Either one tests any model and lets
-you choose who grades it. The difference is who drives: you script the CLI yourself, or let
-Claude operate the plugin for you.
+All three run the same diagnostic underneath. The difference is how you configure and drive it.
 
-| | **CLI** (`pip install`) | **Claude Code plugin** |
-|---|---|---|
-| **How you drive it** | you write the **fixture** (the config describing your agent) and CLI flags; scriptable, CI-friendly | Claude is the operator: it discovers your setup, builds the fixture, runs it, and explains the scorecard |
-| **What you can test** | any provider, or your agent's real endpoint | any provider (Anthropic, OpenAI, Gemini, Azure, Bedrock, …); Claude only guides |
-| **Who grades it** | any judge: self, one independent vendor, or a panel | same: self, one independent judge, or a cross-vendor panel |
-| **Output** | JSON + markdown/HTML reports | interactive results artifact (+ JSON source of truth; static-report fallback) |
-| **Setup** | `pip install` + the provider key(s) you'll test | keys in your Claude Code `settings.json` env; the engine self-provisions |
-| **Best for** | CI, automation, audit-ready batch runs | a guided, explained run with discovery and an interactive scorecard |
-
-**Plugin:** Claude runs the diagnostic for you. Open this repo in [Claude Code](https://claude.com/claude-code) and say
-*"run iFixAi on my setup."* Claude reads your agent's config, shows the test fixture
-it builds and names the cost before billing, runs the diagnostic on the model(s)
-and judge(s) you choose, then explains the scorecard. The rest of this page covers the CLI.
+| | **CLI — guided wizard** | **CLI — explicit flags** | **Claude Code plugin** |
+|---|---|---|---|
+| **How you drive it** | `ifixai setup` once → `ifixai run` zero-flag every time; config saved to `ifixai.yaml` | pass every option as a CLI flag; fully scriptable | Claude is the operator: discovers your setup, builds the fixture, runs it, and explains the scorecard |
+| **Best for** | first-time users, fast repeatable runs, team onboarding | CI, automation, audit-ready scripted batches | a guided, explained run with an interactive scorecard |
+| **Setup** | `pip install "ifixai[<provider>]"` + `ifixai setup` | `pip install "ifixai[<provider>]"` + export keys | add keys to Claude Code `settings.json`; engine self-provisions |
+| **Keys** | auto-detected by wizard; stored as env-var name in `ifixai.yaml`, never the secret itself | `--api-key` flag or env var | configured in Claude Code settings |
+| **What you test** | any provider, or your agent's real endpoint | same | same |
+| **Who grades it** | self, one independent vendor, or a multi-judge ensemble | same | same |
+| **Output** | JSON + Markdown reports + rich terminal scorecard | same | interactive results artifact (+ JSON source of truth; static-report fallback) |
+| **Suite** | pick with arrow keys in the wizard | `--suite smoke\|strategic\|core\|extended\|all` | you pick the preset (quick · standard · full) |
 
 ## Quick start
 
-Now try it yourself. In three commands you install iFixAi, check that it runs, then grade a
-real model. The grade you get back is citable because a different vendor's AI does the grading,
-not the agent judging itself. Full walkthrough: **[docs/get-started.md](docs/get-started.md)**.
+Now try it yourself. The guided wizard gets you running with zero flags from the second run
+onward; the Claude Code plugin lets Claude drive the whole thing; or use explicit flags for full
+control and CI. Full walkthrough: **[docs/get-started.md](docs/get-started.md)**.
+
+### Guided wizard (recommended)
+
+```bash
+pip install "ifixai[openai]"   # or anthropic, gemini, etc. — install the provider extra you'll test
+ifixai setup                    # arrow-key wizard: pick provider, model, judge, suite → writes ifixai.yaml
+ifixai run                      # no flags needed from now on
+```
+
+`ifixai setup` detects API keys already in your environment and surfaces them at the top of
+each prompt. No key found? The wizard tells you which env var to export; if it's still missing
+when you run, you'll be prompted for it before the first API call. After setup, `ifixai run`
+reads everything from `ifixai.yaml` — no flags, no copy-pasting keys.
+
+### Claude Code plugin
+
+Let Claude run the whole thing for you, with no flags or fixtures to write. If you already have
+[Claude Code](https://claude.com/claude-code), from inside it:
+
+1. **Install it.** Add this repo as a plugin marketplace, then install the plugin:
+
+   ```
+   /plugin marketplace add ifixai-ai/iFixAi
+   /plugin install ifixai@ifixai-ai
+   ```
+
+   Restart Claude Code or run `/reload-plugins` if it doesn't show up right away.
+
+2. **Run it.** Just ask Claude in plain English (*"run iFixAi on my setup"*), or type the slash command **`/ifixai:ifixai`**.
+
+Claude then reads your agent's config, shows the test fixture it builds and names the cost before
+anything is billed, runs the diagnostic on the model(s) and judge(s) you pick, then walks you
+through the scorecard.
+
+### Explicit flags
 
 ```bash
 # 1. Install the CLI + the extra for the provider you'll test
@@ -115,8 +143,26 @@ Reports land in `./ifixai-results/` as JSON **and** Markdown. Without a second k
 `--eval-mode self` to run as a smoke test (the grade still prints, but it's flagged as
 self-judged, not a result you can cite). Pinning the judge, Full-mode ensembles, and the eval modes:
 **[docs/running.md](docs/running.md)**. Other providers (OpenAI, OpenRouter, Gemini,
-Azure, Bedrock, Hugging Face, HTTP, LangChain) install the matching extra and follow the
-same steps: **[docs/providers.md](docs/providers.md)**.
+Azure, Bedrock, Hugging Face) install the matching extra and follow the same steps; the
+HTTP and LangChain adapters need no provider extra: **[docs/providers.md](docs/providers.md)**.
+
+### Suite options
+
+| Suite | Tests | Use when |
+|---|---|---|
+| `smoke` | 3 | just checking the pipeline works |
+| `strategic` | 8 | quick read on the riskiest spots |
+| `core` | 32 | the graded five-pillar scorecard |
+| `extended` | 13 | frontier risk signal (5 graded, 8 exploratory) |
+| `all` | 45 | everything (the default when you pass no `--suite`) |
+
+Four themes (`security`, `reliability`, `compliance`, `frontier`) also work as `--suite` values; run `ifixai list suites` to browse them all.
+
+```bash
+ifixai run --provider openai --suite strategic   # quick 8-test read
+ifixai run --provider openai --suite core        # the graded scorecard
+ifixai list suites                               # browse all suites and themes
+```
 
 ### Test your own agent
 
@@ -132,6 +178,23 @@ The more of those parts your adapter exposes, the more inspections iFixAi can ac
 score, instead of marking them `insufficient_evidence` (it couldn't see enough of your
 agent to judge; these are reported but don't count for or against your grade). Full
 walkthrough with the model-vs-agent coverage map: **[docs/testing-your-agent.md](docs/testing-your-agent.md)**.
+
+## Reusable config
+
+`ifixai setup` writes `ifixai.yaml`; `ifixai run` layers it under any explicit flag (flag > config > env > default). It stores the key env-var name, never the secret:
+
+```yaml
+provider: openai
+model: gpt-4o
+api_key_env: OPENAI_API_KEY
+suite: core
+judges:
+  - provider: anthropic
+    model: claude-3-5-sonnet-latest
+```
+
+`ifixai setup` also records `fixture`, `mode`, and `eval_mode` (trimmed here for brevity).
+Keep `ifixai.yaml` out of version control — it is git-ignored by default.
 
 ## What you get back
 
@@ -159,20 +222,6 @@ can't skew comparisons.
 Full math and weights: **[docs/scoring.md](docs/scoring.md)**. The full `B01`–`B32` → pillar
 mapping and every premium category: **[docs/inspection_categories.md](docs/inspection_categories.md)**.
 
-## In the wild
-
-Three real open-source AI systems, graded end-to-end: two F's and a D. Each ran against a fixture
-that describes its real setup (tools, rules, permissions), graded by a panel of judges from different vendors.
-
-| System | Upstream model | Score | Grade | Key finding |
-|---|---|---|---|---|
-| [Hermes Agent](case_studies/hermes-gpt-4o-mini/SCORECARD.md) (Nous Research) | `gpt-4o-mini` | **33.9%** | **F** | Capable model, but nothing stops bad actions; 23 of 32 inspections failed. [deep dive](https://ifixai.ai/docs/diagnostics/hermes) |
-| [OpenClaw](case_studies/openclaw-haiku/SCORECARD.md) v2026.5.4 | `claude-3.5-haiku` | **60.0%** | **D** | Follows the rules when asked plainly; caves when the request is dressed up. [deep dive](https://ifixai.ai/docs/diagnostics/openclaw) |
-| [Open WebUI](case_studies/openwebui-sonnet/SCORECARD.md) v0.9.5 | `claude-sonnet-4.6` | **11.3%** | **F** | Nothing passes once you strip the scaffolding that faked compliance. [deep dive](https://ifixai.ai/docs/diagnostics/openwebui) |
-
-The takeaway from Hermes is the clearest: a capable model with nothing enforcing its rules
-is not safe. All scorecards live in **[case_studies/](case_studies/)**.
-
 ## Documentation
 
 Docs are sorted by what you came to do. Start in **[docs/](docs/)**:
@@ -184,8 +233,7 @@ Docs are sorted by what you came to do. Start in **[docs/](docs/)**:
 
 ## Contributing
 
-Issues and PRs welcome. See **[CONTRIBUTING.md](CONTRIBUTING.md)** (`pip install -e ".[dev]"`,
-then `ruff`, `bandit`, `pytest`). Good first issues are
+Issues and PRs welcome. See **[CONTRIBUTING.md](CONTRIBUTING.md)**. Good first issues are
 [labelled here](https://github.com/ifixai-ai/iFixAi/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
 
 ## Contact
