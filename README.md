@@ -62,22 +62,24 @@ can be audited and replayed.
 
 All three run the same diagnostic underneath. The difference is how you configure and drive it.
 
-| | **CLI — guided wizard** | **CLI — explicit flags** | **Claude Code plugin** |
+| | **CLI: guided wizard** | **CLI: explicit flags** | **Coding agent (plugin or skill)** |
 |---|---|---|---|
-| **How you drive it** | `ifixai setup` once → `ifixai run` zero-flag every time; config saved to `ifixai.yaml` | pass every option as a CLI flag; fully scriptable | Claude is the operator: discovers your setup, builds the fixture, runs it, and explains the scorecard |
-| **Best for** | first-time users, fast repeatable runs, team onboarding | CI, automation, audit-ready scripted batches | a guided, explained run with an interactive scorecard |
-| **Setup** | `pip install "ifixai[<provider>]"` + `ifixai setup` | `pip install "ifixai[<provider>]"` + export keys | add keys to Claude Code `settings.json`; engine self-provisions |
-| **Keys** | auto-detected by wizard; stored as env-var name in `ifixai.yaml`, never the secret itself | `--api-key` flag or env var | configured in Claude Code settings |
+| **How you drive it** | `ifixai setup` once → `ifixai run` zero-flag every time; config saved to `ifixai.yaml` | pass every option as a CLI flag; fully scriptable | the agent is the operator: discovers your setup, builds the fixture, runs it, and explains the scorecard |
+| **Best for** | first-time users, fast repeatable runs, team onboarding | CI, automation, audit-ready scripted batches | a guided, explained run with an interactive scorecard, inside the agent you already use |
+| **Setup** | `pip install "ifixai[<provider>]"` + `ifixai setup` | `pip install "ifixai[<provider>]"` + export keys | Claude Code or Codex: install the plugin (self-provisions). Any agent: `uvx ifixai install` scaffolds `/ifixai-skill` |
+| **Keys** | auto-detected by wizard; stored as env-var name in `ifixai.yaml`, never the secret itself | `--api-key` flag or env var | each provider's key from its environment variable, never on the command line |
 | **What you test** | any provider, or your agent's real endpoint | same | same |
 | **Who grades it** | self, one independent vendor, or a multi-judge ensemble | same | same |
 | **Output** | JSON + Markdown reports + rich terminal scorecard | same | interactive results artifact (+ JSON source of truth; static-report fallback) |
-| **Suite** | pick with arrow keys in the wizard | `--suite smoke\|strategic\|core\|extended\|all` | you pick the preset (quick · standard · full) |
+| **Suite** | pick with arrow keys in the wizard | `--suite smoke\|strategic\|core\|extended\|all` | the agent picks `--mode`/`--suite`, same engine as the CLI |
+| **Works in** | any terminal | any terminal / CI | Claude Code, Cursor, Codex, VS Code, Windsurf, Cline, Continue, Gemini, Zed |
 
 ## Quick start
 
 Now try it yourself. The guided wizard gets you running with zero flags from the second run
-onward; the Claude Code plugin lets Claude drive the whole thing; or use explicit flags for full
-control and CI. Full walkthrough: **[docs/get-started.md](docs/get-started.md)**.
+onward; from a coding agent, the plugin (Claude Code or Codex) or the scaffolded `/ifixai-skill`
+(every agent) lets the agent drive the whole thing; or use explicit flags for full control and CI.
+Full walkthrough: **[docs/get-started.md](docs/get-started.md)**.
 
 ### Guided wizard (recommended)
 
@@ -92,25 +94,52 @@ each prompt. No key found? The wizard tells you which env var to export; if it's
 when you run, you'll be prompted for it before the first API call. After setup, `ifixai run`
 reads everything from `ifixai.yaml` — no flags, no copy-pasting keys.
 
-### Claude Code plugin
+### Plugin (Claude Code and Codex)
 
-Let Claude run the whole thing for you, with no flags or fixtures to write. If you already have
-[Claude Code](https://claude.com/claude-code), from inside it:
+The recommended way to run from an agent: a one-time native install with an auto-provisioning
+hook, so there is nothing to set up per run. Ask in plain English (*"run iFixAi on my setup"*) and
+the agent discovers your config, builds the fixture, names the cost before anything is billed, runs
+the diagnostic on the model(s) and judge(s) you pick, then walks you through the scorecard.
 
-1. **Install it.** Add this repo as a plugin marketplace, then install the plugin:
+**Claude Code** — from inside [Claude Code](https://claude.com/claude-code):
 
-   ```
-   /plugin marketplace add ifixai-ai/iFixAi
-   /plugin install ifixai@ifixai-ai
-   ```
+```
+/plugin marketplace add ifixai-ai/iFixAi
+/plugin install ifixai@ifixai-ai
+```
 
-   Restart Claude Code or run `/reload-plugins` if it doesn't show up right away.
+Then ask *"run iFixAi on my setup"*, or type **`/ifixai:ifixai`**. (Restart Claude Code or run
+`/reload-plugins` if it doesn't appear.)
 
-2. **Run it.** Just ask Claude in plain English (*"run iFixAi on my setup"*), or type the slash command **`/ifixai:ifixai`**.
+**Codex** — in your terminal:
 
-Claude then reads your agent's config, shows the test fixture it builds and names the cost before
-anything is billed, runs the diagnostic on the model(s) and judge(s) you pick, then walks you
-through the scorecard.
+```
+codex plugin marketplace add ifixai-ai/iFixAi
+codex plugin add ifixai@ifixai-ai
+```
+
+Then start Codex and ask *"run iFixAi on my setup"*. Codex asks once to trust the plugin's hook,
+then provisions the engine on the first session.
+
+### Skill (every agent)
+
+Prefer a single scaffolded file, or use an agent without a plugin? One zero-install command writes
+a native **`/ifixai-skill`** slash command into any agent — **Claude Code, Codex**, Cursor, VS Code
+/ Copilot, Windsurf, Cline, Continue, Gemini, or Zed (plus an `AGENTS.md` bridge). Only `uv` and
+Python 3.10+ are needed; no API key or provider extra to scaffold:
+
+```bash
+uvx ifixai install --agents cursor   # any slug: claude, codex, vscode, windsurf, cline, continue, gemini, zed
+uvx ifixai install --agents all      # scaffold every agent at once
+uvx ifixai install --list            # every supported agent and where its file lands
+```
+
+Then run **`/ifixai-skill`** in that agent. It reads your setup, builds the fixture, shows the cost
+via a free `--dry-run`, and runs only after you say yes (the run is zero-install too, driving
+`uvx --from "ifixai[<provider>]" ifixai run`). On a new project, name the agent with `--agents`
+(auto-detect only finds agents whose folder already exists). Already have the CLI on your PATH?
+Drop the `uvx` prefix. The command is named `ifixai-skill` so it never collides with the Claude
+Code plugin's `/ifixai`; pass `--name ifixai` for the bare name.
 
 ### Explicit flags
 
