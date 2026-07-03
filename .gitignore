@@ -102,12 +102,22 @@ website-misalignments-*.md
 
 # ─── Internal planning / strategy notes (never publish) ─────────────────────
 *_plan.md
+*_plan_*.md
 *_briefing.md
+*_runbook.md
+docs/design/
+demo/
 
 # ─── Loose desktop dumps at repo root ──────────────────────────────────────
 /Screenshot*.png
 /screencapture-*.pdf
 /screencapture-*.png
+/*.mov
+/*.mp4
+/*.mp3
+/results.json
+/scorecard*.html
+/scorecard*.png
 
 # ─── Secrets / local config (NEVER commit) ─────────────────────────────────
 .env
