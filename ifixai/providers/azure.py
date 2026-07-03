@@ -4,6 +4,7 @@ import openai
 
 from ifixai.providers.base import (
     ChatProvider,
+    create_chat_completion_json_fallback,
     ProviderAuthError,
     ProviderConnectionError,
     ProviderEmptyContentError,
@@ -108,8 +109,12 @@ class AzureOpenAIProvider(ChatProvider):
             params["seed"] = config.seed
         if config.max_tokens is not None:
             params["max_tokens"] = config.max_tokens
+        if config.json_output:
+            # Constrain judge calls to valid JSON (cheap models reliably emit a
+            # parseable verdict); fall back to free text if unsupported.
+            params["response_format"] = {"type": "json_object"}
         try:
-            response = await client.chat.completions.create(**params)  # type: ignore[arg-type]
+            response = await create_chat_completion_json_fallback(client, **params)
 
             choices = response.choices
             if not choices:

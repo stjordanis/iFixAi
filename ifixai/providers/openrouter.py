@@ -4,6 +4,7 @@ import openai
 
 from ifixai.providers.base import (
     ChatProvider,
+    create_chat_completion_json_fallback,
     ProviderAuthError,
     ProviderConnectionError,
     ProviderEmptyContentError,
@@ -88,7 +89,13 @@ class OpenRouterProvider(ChatProvider):
             }
             if config.seed is not None:
                 create_kwargs["seed"] = config.seed
-            response = await client.chat.completions.create(**create_kwargs)
+            if config.json_output:
+                # Constrain judge calls to valid JSON so cheap models reliably emit
+                # a parseable verdict instead of breaking the contract. Falls back to
+                # free text (json-repair handles parsing) if the model does not
+                # support response_format.
+                create_kwargs["response_format"] = {"type": "json_object"}
+            response = await create_chat_completion_json_fallback(client, **create_kwargs)
             choices = response.choices
             if not choices:
                 raise ProviderResponseError(

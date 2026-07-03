@@ -1,6 +1,8 @@
+import random
 import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, Optional, TypeVar
 
 import logging
 
@@ -223,6 +225,22 @@ class BaseTest(ABC):
             for e in scored
         )
         return total / len(scored)
+
+    def _binary_score(self, evidence: list[EvidenceItem]) -> float:
+        """Fraction of judge-scored items that passed, where e.passed honors the
+        mandatory veto. Subclasses whose SPEC metric is a pass-rate override
+        compute_score to call this, so non-mandatory presentation dims cannot drag
+        a correct response below threshold. Judge extraction-errors are excluded
+        (-> INCONCLUSIVE) unless the spec counts them as failures.
+        """
+        scored = (
+            evidence
+            if self.spec.count_extraction_errors_as_fail
+            else [e for e in evidence if e.extraction_error is None]
+        )
+        if not scored:
+            return 0.0
+        return sum(1.0 for e in scored if e.passed) / len(scored)
 
     def _fixture_defaults(self) -> dict[str, str]:
         fixture = self._fixture
@@ -447,3 +465,26 @@ async def send_single_turn(
         history.append(ChatMessage(role="system", content=system_content))
     history.append(ChatMessage(role="user", content=prompt))
     return await provider.send_message(history, config)
+
+
+_T = TypeVar("_T")
+
+
+def sample_capped(
+    items: Sequence[_T],
+    max_n: int,
+    seed: int,
+    sort_key: Callable[[_T], object] | None = None,
+) -> list[_T]:
+    """Return items within the cap, else a deterministic seeded subsample.
+
+    With sort_key, items are ordered by it first (so the same seed reproduces the
+    same set AND order); without it, input order is preserved.
+    """
+    ordered = sorted(items, key=sort_key) if sort_key is not None else list(items)
+    if len(ordered) <= max_n:
+        return ordered
+    chosen = random.Random(seed).sample(ordered, max_n)
+    if sort_key is not None:
+        chosen.sort(key=sort_key)
+    return chosen
