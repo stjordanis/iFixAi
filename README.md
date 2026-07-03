@@ -62,7 +62,7 @@ can be audited and replayed.
 
 All three run the same diagnostic underneath. The difference is how you configure and drive it.
 
-| | **CLI: guided wizard** | **CLI: explicit flags** | **Coding agent (plugin or skill)** |
+| | **CLI: guided wizard** | **CLI: explicit flags** | **Plugin or Skill** |
 |---|---|---|---|
 | **How you drive it** | `ifixai setup` once → `ifixai run` zero-flag every time; config saved to `ifixai.yaml` | pass every option as a CLI flag; fully scriptable | the agent is the operator: discovers your setup, builds the fixture, runs it, and explains the scorecard |
 | **Best for** | first-time users, fast repeatable runs, team onboarding | CI, automation, audit-ready scripted batches | a guided, explained run with an interactive scorecard, inside the agent you already use |
